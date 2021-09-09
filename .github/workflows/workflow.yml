@@ -1,0 +1,334 @@
+name: Build, Test & Deploy
+
+on:
+  push:
+    branches:
+      - develop
+      - release/**
+      - master # normally we would use a tag to deploy to production, BUT lerna does that for us
+  pull_request:
+    branches:
+      - develop
+      - release/**
+      - master
+
+jobs:
+  # Setups the environment for different events/branches
+  # We can't share env across the whole workflow and even if we could, we can't dynamically set it up for various branches
+  # Easier is to echo out to a file and pack it as an artifact
+  Setup:
+    name: Setup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Default env vars'
+        run: |
+          echo "GOOGLE_APPLICATION_CREDENTIALS=./gc.json" >> env
+          echo "CI=true" >> env
+          echo "SENTRY_ORG=$(echo ${{ secrets.SENTRY_ORG }})" >> env
+          echo "SENTRY_PROJECT=$(echo ${{ secrets.SENTRY_PROJECT }})" >> env
+          echo "SENTRY_AUTH_TOKEN=$(echo ${{ secrets.SENTRY_AUTH_TOKEN }})" >> env
+      - name: 'Setup UNKNOWN PULL-REQUEST environment'
+        if: ${{ github.event_name != 'pull_request' && !contains(github.base_ref, 'develop') && !contains(github.base_ref, 'release') && !contains(github.base_ref, 'master') }}
+        run: |
+          echo "CLOUDSDK_CORE_PROJECT=lifebrand-social-bff-develop" >> env
+          echo "STAGE=dev" >> env
+          echo "APP_VERSION=$(echo ${{github.sha}})" >> env
+          echo "GCLOUD_AUTH=$(echo ${{ secrets.GCLOUD_AUTH_DEVELOP }})" >> env
+          echo "::add-mask::${{ secrets.GCLOUD_AUTH_DEVELOP }}"
+      - name: 'Setup DEVELOP environment'
+        if: ${{ contains(github.ref, 'develop') || contains(github.base_ref, 'develop') }}
+        run: |
+          echo "CLOUDSDK_CORE_PROJECT=lifebrand-social-bff-develop" >> env
+          echo "STAGE=dev" >> env
+          echo "APP_VERSION=$(echo ${{github.sha}})" >> env
+          echo "GCLOUD_AUTH=$(echo ${{ secrets.GCLOUD_AUTH_DEVELOP }})" >> env
+          echo "::add-mask::GCLOUD_AUTH=${{ secrets.GCLOUD_AUTH_DEVELOP }}"
+      - name: 'Setup STAGING environment'
+        if: ${{ contains(github.ref, 'release') || contains(github.base_ref, 'release') }}
+        run: |
+          echo "CLOUDSDK_CORE_PROJECT=lifebrand-social-bff-staging" >> env
+          echo "STAGE=staging" >> env
+          echo "APP_VERSION=$(echo ${GITHUB_REF##*/}-RC:${{ github.sha }})" >> env
+          echo "GCLOUD_AUTH=$(echo ${{ secrets.GCLOUD_AUTH_STAGING }})" >> env
+          echo "::add-mask::GCLOUD_AUTH=${{ secrets.GCLOUD_AUTH_STAGING }}"
+      - name: 'Setup PRODUCTION environment'
+        if: ${{ contains(github.ref, 'master') || contains(github.base_ref, 'master') }}
+        run: |
+          echo "CLOUDSDK_CORE_PROJECT=lifebrand-social-bff" >> env
+          echo "STAGE=production" >> env
+          echo "APP_VERSION=$(echo ${GITHUB_REF##*/})" >> env
+          echo "GCLOUD_AUTH=$(echo ${{ secrets.GCLOUD_AUTH_PRODUCTION }})" >> env
+          echo "::add-mask::GCLOUD_AUTH=${{ secrets.GCLOUD_AUTH_PRODUCTION }}"
+      - name: Archive Env
+        uses: actions/upload-artifact@v2
+        with:
+          name: environment
+          path: ./env
+
+  # Bootstraps lerna and all packages
+  Bootstrap:
+    needs: Setup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Environemnt ⏬
+        # https://github.com/actions/download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: environment
+
+      - name: Apply environment
+        run: cat ./env >> $GITHUB_ENV
+
+      - name: 'Checkout Repo'
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '12'
+
+      - name: Cache node modules
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: ~/.npm
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
+
+      # Also removes the installed @lerna/version and changed so we can use the custom ones that support --since filter
+      - name: Install basic deps and remove @lerna/version
+        run: |
+          npm ci
+          rm -rf ./node_modules/lerna/node_modules
+      - name: Bootstrap Lerna
+        run: lerna bootstrap --ci --no-progress -- --no-audit
+
+      # Unfortunately we have to drop node_modules, they are heavy (700Mb) and take forever to packup and unpack
+      # But lets keep prisma and nexus typegen
+      - name: 'Tar Bootstrap'
+        run: |
+          tar --exclude='node_modules' -cvf repo.tar ./
+          tar -cvf bootstrap.tar packages/prisma-schema/node_modules backends/**/node_modules/@types/nexus-typegen
+      - name: Archive Bootstrap
+        uses: actions/upload-artifact@v2
+        with:
+          name: bootstrap-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            bootstrap.tar
+            repo.tar
+  StaticTests:
+    name: Static Tests (Lint and Type)
+    needs: Bootstrap
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "Empty Step"
+
+  Test:
+    needs: Bootstrap
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "Empty Step"
+
+  Cypress:
+    name: Cypress E2E Testing
+    needs: Bootstrap
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "Empty Step"
+
+  Build:
+    # Only build on branches not PRs (we don't have preview deployments yet)
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: Bootstrap
+    name: Build App
+    runs-on: ubuntu-latest
+
+    outputs:
+      commitsChanged: ${{ steps.commtis.outputs.SINCE_LAST }}
+      packagesChanged: ${{ steps.changed.outputs.SINCE_LAST }}
+
+    steps:
+      - name: Download Environemnt ⏬
+        # https://github.com/actions/download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: environment
+
+      - name: Apply environment
+        run: cat ./env > $GITHUB_ENV
+
+      - name: Download the built folders ⏬
+        # https://github.com/actions/download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: bootstrap-${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Re-Boostrap Repository
+        run: |
+          tar -xf ./repo.tar
+          npm ci
+          rm -rf ./node_modules/lerna/node_modules
+          lerna bootstrap --ci --no-progress -- --no-audit
+          tar -xf ./bootstrap.tar
+      # Get number of commits that lerna should work with
+      # If there are no new commits since DEVELOP the branch was created and pushed - detect number of commits to version by diffing with master
+      # If there are commits since DEVELOP the branch is used - use HEAD~1 to get the latest changes
+      - name: Commits since
+        id: figure-commits
+        run: |
+          echo "::set-output name=SINCE_MASTER::$(git rev-list --count HEAD ^refs/remotes/origin/master)"
+          echo "::set-output name=SINCE_DEV::$(git rev-list --count HEAD ^refs/remotes/origin/develop)"
+      - name: Is Forced Redeploy
+        id: forced
+        run: |
+          echo "::set-output name=IS::${{ contains(github.event.head_commit.message, '[:forced') }}"
+          echo "::set-output name=COMMITS::$(echo "${{ github.event.head_commit.message }}" |  grep -o -E '\[:forced-[0-9]+\]' | grep -o -E '[0-9]+'|| echo "1")"
+      # Figures out the number of commits that lerna should diff against
+      # For Dev environment it is always HEAD~1
+      # For Staging environment it will check if there are commits in the branch and either use a diff against master or HEAD~1
+      # Production does not use commit diffing but tags which are pushed on release
+      # IF THE BUILD FAILS, there has to be a mechanism which selects the correct number of commits + the fix commit on staging and develop it does not have to happen on master because we have tags there
+      # 1. Initial commit to release branch (Master has more commits than 0, no commits since dev branch)
+      # 2. Continuous commit to release branch (More commits since dev branch and NOT forced)
+      # 3. Continuous commit to release branch and a forced flag (More commits since dev branch and FORCED)
+      # 4. Commit to dev branch and a forced flag (FORCED)
+      # 5. Default
+      - name: Figure out number of commits
+        id: commits
+        run: |
+          if [[ ${{ env.STAGE }} == 'staging' ]] && [[ ${{ steps.figure-commits.outputs.SINCE_MASTER }} -gt 0 ]] && [[ ${{ steps.figure-commits.outputs.SINCE_DEV }} -eq 0 ]]; then
+            echo "::set-output name=SINCE_LAST::${{steps.figure-commits.outputs.SINCE_MASTER}}"
+          elif [[ ${{ env.STAGE }} == 'staging' ]] && [[ ${{ steps.figure-commits.outputs.SINCE_DEV }} -gt 0 ]] && ${{ !steps.forced.outputs.IS }}; then
+            echo ::set-output name=SINCE_LAST::1
+          elif [[ ${{ env.STAGE }} == 'staging' ]] && [[ ${{ steps.figure-commits.outputs.SINCE_DEV }} -gt 0 ]] && ${{ steps.forced.outputs.IS }}; then
+            echo ::set-output name=SINCE_LAST::$((1 + ${{ steps.forced.outputs.COMMITS }}))
+          elif [[ ${{ env.STAGE }} == 'dev' ]] && ${{ steps.forced.outputs.IS }}; then
+            echo ::set-output name=SINCE_LAST::$((1 + ${{ steps.forced.outputs.COMMITS }}))
+          else
+            echo ::set-output name=SINCE_LAST::1
+          fi
+      - name: Check if we have changes
+        id: figure-changed
+        run: |
+          echo "::set-output name=SINCE_MASTER::$(lerna ls -a --include-dependents --json --since | tr -d '\n ' | sed 's/\"/\\\"/g') "
+          echo "::set-output name=SINCE_LAST_COMMIT::$(lerna ls -a --include-dependents --json --since HEAD~${{ steps.commits.outputs.SINCE_LAST }} | tr -d '\n ' | sed 's/\"/\\\"/g')"
+      - name: Figure out changed
+        id: changed
+        run: |
+          if [[ ${{ env.STAGE }} == 'dev' ]]; then
+            echo "::set-output name=SINCE_LAST::${{ steps.figure-changed.outputs.SINCE_LAST_COMMIT }}"
+          elif [[ ${{ env.STAGE }} == 'staging' ]] && [[ ${{ steps.figure-commits.outputs.SINCE_MASTER }} -gt 0 ]] && [[ ${{ steps.figure-commits.outputs.SINCE_DEV }} -eq 0 ]]; then
+            echo "::set-output name=SINCE_LAST::${{ steps.figure-changed.outputs.SINCE_MASTER }}"
+          elif [[ ${{ env.STAGE }} == 'staging' ]] && [[ ${{ steps.figure-commits.outputs.SINCE_DEV }} -gt 0 ]]; then
+            echo "::set-output name=SINCE_LAST::${{ steps.figure-changed.outputs.SINCE_LAST_COMMIT }}"
+          elif [[ ${{ env.STAGE }} == 'production' ]]
+          then
+            echo "::set-output name=SINCE_LAST::$(lerna ls -a --json --since | tr -d '\n ' | sed 's/\"/\\\"/g')"
+          fi
+      # No version is created on develop
+      - name: Create Pre-release Version
+        if: ${{ env.STAGE == 'staging' }}
+        run: lerna version --yes --no-git-tag-version --conventional-prerelease --since HEAD~${{steps.commits.outputs.SINCE_LAST}}
+
+      - name: Create Release Version
+        if: ${{ env.STAGE == 'production' }}
+        run: lerna version --yes --conventional-graduate
+
+      - name: Build for develop
+        if: ${{env.STAGE == 'dev' }}
+        run: lerna run build --since HEAD~${{ steps.commits.outputs.SINCE_LAST }}
+
+      - name: Build for Staging
+        if: ${{ env.STAGE == 'staging' }}
+        run: lerna run build --since HEAD~${{steps.commits.outputs.SINCE_LAST}}
+
+      - name: Build for Master
+        if: ${{ env.STAGE == 'production' }}
+        run: lerna run build --since
+
+      - name: 'Tar files'
+        run: |
+          tar --exclude='node_modules' -cvf build.tar ./
+          tar -cvf generated.tar packages/prisma-schema/node_modules backends/**/node_modules/@types/nexus-typegen
+      - name: Archive Build
+        uses: actions/upload-artifact@v2
+        with:
+          name: build-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ./build.tar
+            ./generated.tar
+  Deploy:
+    needs: [ StaticTests, Test, Cypress, Build ]
+    # Only run when not inside a pull_request
+    name: Deploy Changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check if there are any changed
+        id: changed
+        env:
+          changedPackages: ${{ toJSON(needs.Build.outputs.packagesChanged) }}
+        run: |
+          echo "::set-output name=packagesChangedLength::$(echo $changedPackages | jq '. | length')"
+      - name: Download Environemnt ⏬
+        # https://github.com/actions/download-artifact
+        uses: actions/download-artifact@v2
+        if: ${{ steps.changed.outputs.packagesChangedLength != 0}}
+        with:
+          name: environment
+
+      - name: Apply environment
+        if: ${{ steps.changed.outputs.packagesChangedLength != 0}}
+        run: cat ./env > $GITHUB_ENV
+
+      - name: Download the built folders ⏬
+        # https://github.com/actions/download-artifact
+        uses: actions/download-artifact@v2
+        if: ${{ steps.changed.outputs.packagesChangedLength != 0}}
+        with:
+          name: build-${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Re-Boostrap Repository
+        if: ${{ steps.changed.outputs.packagesChangedLength != 0}}
+        run: |
+          tar -xf ./build.tar
+          npm ci
+          lerna bootstrap --ci --no-progress -- --no-audit
+          tar -xf ./generated.tar
+          
+  Finilize:
+    needs: [ Deploy ]
+    name: Finalize Workflow
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download the built folders ⏬
+        # https://github.com/actions/download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: build-${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Untar bootstrap
+        run: |
+          tar -xvf ./build.tar
+          tar -xvf ./bootstrap.tar
+      - name: Commit & Push Changes
+        run: |
+          if git diff --exit-code; then
+            echo "No Changes to commit"
+          else
+            git commit -am "chore(version): bump package versions"
+            git push
+            git push --tags
+          fi
