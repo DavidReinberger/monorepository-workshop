@@ -1,0 +1,32 @@
+{
+  "name": "@corp/prisma",
+  "version": "1.0.0",
+  "description": "> TODO: description",
+  "author": "David Reinberger <davidreinberger@gmail.com>",
+  "homepage": "https://github.com/DavidReinberger/monorepository-workshop#readme",
+  "license": "ISC",
+  "main": "lib/prisma.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "files": [
+    "lib"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavidReinberger/monorepository-workshop.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: run tests from root\" && exit 1"
+  },
+  "bugs": {
+    "url": "https://github.com/DavidReinberger/monorepository-workshop/issues"
+  },
+  "keywords": [],
+  "devDependencies": {
+    "@types/node": "^16.9.1",
+    "prisma": "^3.0.2",
+    "ts-node": "^10.2.1",
+    "typescript": "^4.4.2"
+  }
+}

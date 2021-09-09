@@ -116,7 +116,7 @@ jobs:
       - name: 'Tar Bootstrap'
         run: |
           tar --exclude='node_modules' -cvf repo.tar ./
-          tar -cvf bootstrap.tar packages/prisma-schema/node_modules backends/**/node_modules/@types/nexus-typegen
+          tar -cvf bootstrap.tar packages/prisma/node_modules
       - name: Archive Bootstrap
         uses: actions/upload-artifact@v2
         with:
@@ -260,7 +260,7 @@ jobs:
       - name: 'Tar files'
         run: |
           tar --exclude='node_modules' -cvf build.tar ./
-          tar -cvf generated.tar packages/prisma-schema/node_modules backends/**/node_modules/@types/nexus-typegen
+          tar -cvf generated.tar packages/prisma/node_modules
       - name: Archive Build
         uses: actions/upload-artifact@v2
         with:
@@ -306,7 +306,7 @@ jobs:
           npm ci
           lerna bootstrap --ci --no-progress -- --no-audit
           tar -xf ./generated.tar
-          
+
   Finilize:
     needs: [ Deploy ]
     name: Finalize Workflow

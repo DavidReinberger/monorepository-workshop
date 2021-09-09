@@ -1,0 +1,28 @@
+{
+  "name": "root",
+  "private": true,
+  "devDependencies": {
+    "@commitlint/cli": "^12.1.4",
+    "@commitlint/config-conventional": "^12.1.4",
+    "@lerna/changed": "npm:@davidreinberger/lerna-changed@^4.2.1",
+    "@lerna/version": "npm:@davidreinberger/lerna-version@^4.1.0",
+    "cz-conventional-changelog": "^3.3.0",
+    "husky": "^6.0.0",
+    "lerna": "^4.0.0"
+  },
+  "scripts": {
+    "postinstall": "rm -rf ./node_modules/lerna/node_modules",
+    "prepare": "husky install",
+    "create-pre-release": "git checkout develop && git fetch && git pull --rebase && git tag release"
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  }
+}

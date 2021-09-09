@@ -1,0 +1,29 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "> TODO: description",
+  "author": "David Reinberger <davidreinberger@gmail.com>",
+  "homepage": "https://github.com/DavidReinberger/monorepository-workshop#readme",
+  "license": "ISC",
+  "main": "lib/backend.js",
+  "directories": {
+    "lib": "lib",
+    "test": "__tests__"
+  },
+  "files": [
+    "lib"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavidReinberger/monorepository-workshop.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: run tests from root\" && exit 1"
+  },
+  "bugs": {
+    "url": "https://github.com/DavidReinberger/monorepository-workshop/issues"
+  },
+  "dependencies": {
+    "@corp/prisma": "^1.0.0"
+  }
+}
