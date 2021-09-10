@@ -1,11 +1,11 @@
 {
-  "name": "backend",
+  "name": "@corp/uikit",
   "version": "1.0.0",
   "description": "> TODO: description",
   "author": "David Reinberger <davidreinberger@gmail.com>",
   "homepage": "https://github.com/DavidReinberger/monorepository-workshop#readme",
   "license": "ISC",
-  "main": "lib/backend.js",
+  "main": "lib/uikit.js",
   "directories": {
     "lib": "lib",
     "test": "__tests__"
@@ -24,7 +24,6 @@
     "url": "https://github.com/DavidReinberger/monorepository-workshop/issues"
   },
   "dependencies": {
-    "@corp/prisma": "^1.0.0",
     "date-fns": "^2.23.0"
   }
 }

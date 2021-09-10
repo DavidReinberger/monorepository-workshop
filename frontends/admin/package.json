@@ -24,6 +24,8 @@
     "url": "https://github.com/DavidReinberger/monorepository-workshop/issues"
   },
   "dependencies": {
-    "@corp/prisma": "^1.0.0"
+    "@corp/prisma": "^1.0.0",
+    "@corp/uikit": "^1.0.0",
+    "date-fns": "^2.23.0"
   }
 }
